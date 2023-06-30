@@ -138,6 +138,8 @@ mod ext {
 	use capi::scapi::ISciterAPI;
 	use capi::sctypes::{BOOL, LPCSTR, LPCVOID};
 
+	use crate::capi::sctypes::LPCWSTR;
+
 	type ApiType = *const ISciterAPI;
 	type FuncType = extern "system" fn() -> *const ISciterAPI;
 
@@ -145,6 +147,7 @@ mod ext {
 
 	extern "system" {
 		fn LoadLibraryA(lpFileName: LPCSTR) -> LPCVOID;
+		fn LoadLibraryW(lpFileName: LPCWSTR) -> LPCVOID;
 		fn FreeLibrary(dll: LPCVOID) -> BOOL;
 		fn GetProcAddress(hModule: LPCVOID, lpProcName: LPCSTR) -> LPCVOID;
 	}
@@ -159,22 +162,25 @@ mod ext {
 		}
 	}
 
+	fn wide_string(s: &str) -> Vec<u16> {
+		use std::os::windows::prelude::OsStrExt;
+		std::ffi::OsStr::new(s).encode_wide().chain(Some(0).into_iter()).collect()
+	}
+
 	pub fn try_load_library(permanent: bool) -> ::std::result::Result<ApiType, String> {
-		use std::ffi::CString;
 		use std::path::Path;
 
 		flog(&format!("try_load_library: permanent:{permanent}"));
 
 		fn try_load(path: &Path) -> Option<LPCVOID> {
 			flog(&format!(
-				"try_load_library: try_load: path:{:?}, path.display():{:?}, CString::new:{:?}",
+				"try_load_library: try_load: path:{:?}, path.display():{:?}",
 				path,
 				path.display(),
-				CString::new(format!("{}", path.display()))
 			));
-			let path = CString::new(format!("{}", path.display())).expect("invalid library path");
+			let path = wide_string(path.to_string_lossy().to_string().as_str());
 			flog(&format!("try_load_library: path:{:?}", path,));
-			let dll = unsafe { LoadLibraryA(path.as_ptr()) };
+			let dll = unsafe { LoadLibraryW(path.as_ptr()) };
 			if !dll.is_null() {
 				Some(dll)
 			} else {
